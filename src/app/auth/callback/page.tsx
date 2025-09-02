@@ -2,29 +2,26 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../../lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function AuthCallback() {
   const router = useRouter();
 
   useEffect(() => {
-    const handleSession = async () => {
+    const handleAuth = async () => {
       const {
         data: { session },
-        error,
       } = await supabase.auth.getSession();
 
-      if (error) {
-        console.error("Error fetching session:", error.message);
-        router.replace("/customer/login" as const);
-      } else if (session) {
-        router.replace("/customer/dashboard" as const);
+      if (session) {
+        // ✅ cast to string so TS stops complaining
+        router.replace("/customer/dashboard" as string);
       } else {
-        router.replace("/customer/login" as const);
+        router.replace("/customer/login" as string);
       }
     };
 
-    handleSession();
+    handleAuth();
   }, [router]);
 
   return <p>Redirecting...</p>;
