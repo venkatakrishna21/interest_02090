@@ -2,34 +2,32 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../../lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 
-export default function AuthCallbackPage() {
+export default function AuthCallback() {
   const router = useRouter();
 
   useEffect(() => {
-    const handleCallback = async () => {
+    const handleAuth = async () => {
       const { data, error } = await supabase.auth.getSession();
 
       if (error) {
-        console.error("Error in callback:", error);
-        return;
-      }
-
-      if (data.session) {
-        // redirect to dashboard or customer page after login
-        router.push("/customer/dashboard");
+        console.error("Error in callback:", error.message);
+        router.replace("/customer/login");
+      } else if (data?.session) {
+        // Redirect after successful login
+        router.replace("/customer/dashboard");
       } else {
-        router.push("/customer/login");
+        router.replace("/customer/login");
       }
     };
 
-    handleCallback();
+    handleAuth();
   }, [router]);
 
   return (
-    <div className="flex h-screen items-center justify-center">
-      <p>Signing you in...</p>
+    <div className="flex items-center justify-center h-screen">
+      <p>Finishing sign-in, please wait...</p>
     </div>
   );
 }
