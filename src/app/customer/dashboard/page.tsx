@@ -1,25 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function CustomerDashboard() {
-  const [user, setUser] = useState<any>(null);
+  const [session, setSession] = useState<any>(null);
+  const [customer, setCustomer] = useState<any>(null);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      setUser(user);
-    };
-    fetchUser();
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      if (data.session?.user) {
+        loadCustomer(data.session.user.id);
+      }
+    });
   }, []);
 
-  return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold">Customer Dashboard</h1>
-      {user ? <p>Welcome, {user.email} 🎉</p> : <p>Loading...</p>}
-    </div>
-  );
-}
+  async function loadCustomer(userId: string) {
+    const { data, error } = await supabase
+      .from("customers")
+      .select("*")
+      .eq("user_id", userId)
+      .single();
+
+    if (!error) setCustomer(data);
+  }
+
+  async function saveCustomer(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+
+    const { error } = await supabase
+      .from("customers")
+      .upsert
