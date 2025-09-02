@@ -15,9 +15,9 @@ export default function AuthCallback() {
 
       if (session) {
         // ✅ cast to string so TS stops complaining
-        router.replace("/customer/dashboard" as string);
+        router.replace("/customer/dashboard" as const);
       } else {
-        router.replace("/customer/login" as string);
+        router.replace("/customer/login" as const);
       }
     };
 
