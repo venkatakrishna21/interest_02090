@@ -2,27 +2,38 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "../../../lib/supabaseClient";
 
-export default function AuthCallback() {
+export default function AuthCallbackPage() {
   const router = useRouter();
 
   useEffect(() => {
-    const handleAuth = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    const processLogin = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
 
-      if (session) {
-        // ✅ cast to string so TS stops complaining
-        router.replace("/customer/dashboard" as const);
+      if (user) {
+        // Ensure Owner exists
+        const { data: existing } = await supabase
+          .from("owners")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (!existing) {
+          await supabase.from("owners").insert({
+            user_id: user.id,
+            email: user.email,
+          });
+        }
+
+        router.replace("/dashboard/owner"); // ✅ Redirect owner
       } else {
-        router.replace("/customer/login" as const);
+        router.replace("/owner/login");
       }
     };
 
-    handleAuth();
+    processLogin();
   }, [router]);
 
-  return <p>Redirecting...</p>;
+  return <p>Loading...</p>;
 }
