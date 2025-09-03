@@ -1,88 +1,166 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { useRouter } from "next/navigation";
+import { supabase } from "../../../lib/supabaseClient";
 
 export default function CustomerDashboard() {
-  const [session, setSession] = useState<any>(null);
-  const [customer, setCustomer] = useState<any>(null);
+  const router = useRouter();
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
+  // ✅ Fetch logged-in owner's customers
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      if (data.session?.user) {
-        loadCustomer(data.session.user.id);
-      }
-    });
-  }, []);
+    const fetchCustomers = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-  async function loadCustomer(userId: string) {
-    const { data, error } = await supabase
-      .from("customers")
-      .select("*")
-      .eq("user_id", userId)
+      if (!user) {
+        router.replace("/owner/login");
+        return;
+      }
+
+      // Find owner row
+      const { data: owner } = await supabase
+        .from("owners")
+        .select("id")
+        .eq("user_id", user.id)
+        .single();
+
+      if (!owner) {
+        console.error("❌ No matching owner found");
+        return;
+      }
+
+      // Fetch customers for this owner
+      const { data, error } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("owner_id", owner.id);
+
+      if (error) console.error(error);
+      else setCustomers(data || []);
+    };
+
+    fetchCustomers();
+  }, [router]);
+
+  // ✅ Add new customer
+  const handleAddCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      alert("Not logged in");
+      setLoading(false);
+      return;
+    }
+
+    // Find owner row
+    const { data: owner, error: ownerError } = await supabase
+      .from("owners")
+      .select("id")
+      .eq("user_id", user.id)
       .single();
 
-    if (!error) setCustomer(data);
-  }
+    if (ownerError || !owner) {
+      alert("❌ No matching owner found for current user");
+      setLoading(false);
+      return;
+    }
 
-  async function saveCustomer(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-
-    const { error } = await supabase.from("customers").upsert({
-      user_id: session.user.id,
-      full_name: form.get("full_name") as string,
-      phone: form.get("phone") as string,
-      address: form.get("address") as string,
+    // Insert customer
+    const { error } = await supabase.from("customers").insert({
+      full_name: fullName,
+      email,
+      phone,
+      address,
+      owner_id: owner.id,
     });
 
     if (error) {
-      alert("❌ Error saving customer: " + error.message);
+      console.error("❌ Error saving customer:", error.message);
+      alert("Error saving customer: " + error.message);
     } else {
-      alert("✅ Customer info saved!");
-      loadCustomer(session.user.id);
+      alert("✅ Customer added successfully!");
+      setFullName("");
+      setEmail("");
+      setPhone("");
+      setAddress("");
     }
-  }
 
-  if (!session) {
-    return <p>Loading session...</p>;
-  }
+    setLoading(false);
+  };
 
   return (
-    <div className="p-6 max-w-lg mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Customer Dashboard</h1>
-      <p className="mb-4">Welcome, {session.user.email} 🎉</p>
+    <div className="p-8">
+      <h1 className="text-2xl font-bold mb-4">Owner Dashboard</h1>
 
-      <form onSubmit={saveCustomer} className="space-y-4">
+      {/* ➕ Add Customer Form */}
+      <form onSubmit={handleAddCustomer} className="space-y-4 mb-6">
         <input
           type="text"
-          name="full_name"
           placeholder="Full Name"
-          defaultValue={customer?.full_name || ""}
-          className="w-full p-2 border rounded"
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+          className="w-full border p-2 rounded"
+          required
+        />
+        <input
+          type="email"
+          placeholder="Customer Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full border p-2 rounded"
+          required
         />
         <input
           type="text"
-          name="phone"
           placeholder="Phone"
-          defaultValue={customer?.phone || ""}
-          className="w-full p-2 border rounded"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          className="w-full border p-2 rounded"
         />
         <input
           type="text"
-          name="address"
           placeholder="Address"
-          defaultValue={customer?.address || ""}
-          className="w-full p-2 border rounded"
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          className="w-full border p-2 rounded"
         />
+
         <button
           type="submit"
-          className="px-4 py-2 bg-blue-600 text-white rounded"
+          disabled={loading}
+          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
         >
-          Save Details
+          {loading ? "Saving..." : "Add Customer"}
         </button>
       </form>
+
+      {/* 📋 List Customers */}
+      <h2 className="text-xl font-semibold mb-2">Your Customers</h2>
+      <ul className="space-y-2">
+        {customers.map((c) => (
+          <li
+            key={c.id}
+            className="border rounded p-3 bg-gray-50 flex justify-between"
+          >
+            <span>
+              <strong>{c.full_name}</strong> – {c.email}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
