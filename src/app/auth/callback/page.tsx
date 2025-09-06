@@ -1,52 +1,38 @@
 "use client";
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
 
-export default function AuthCallback() {
+import { useEffect } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { useRouter, useSearchParams } from "next/navigation";
+
+export default function AuthCallbackPage() {
   const router = useRouter();
+  const params = useSearchParams();
 
   useEffect(() => {
-    const checkUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    const handleAuth = async () => {
+      // Get active session
+      const { data, error } = await supabase.auth.getSession();
 
-      if (!user) {
-        router.replace("/owner/login");
+      if (error || !data?.session) {
+        console.error("❌ Auth failed:", error);
+        router.replace("/login");
         return;
       }
 
-      // Check if user is Owner
-      const { data: owner } = await supabase
-        .from("owners")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      // Read role from query params
+      const role = params.get("role");
 
-      if (owner) {
-        router.replace("/owner/dashboard");
-        return;
+      if (role === "owner") {
+        router.replace("/dashboard/owner");
+      } else if (role === "customer") {
+        router.replace("/dashboard/customer");
+      } else {
+        router.replace("/login");
       }
-
-      // Else check if Customer
-      const { data: customer } = await supabase
-        .from("customers")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (customer) {
-        router.replace("/customer/dashboard");
-        return;
-      }
-
-      // If neither → send to login
-      router.replace("/owner/login");
     };
 
-    checkUser();
-  }, [router]);
+    handleAuth();
+  }, [router, params]);
 
-  return <p className="p-4">Redirecting...</p>;
+  return <p className="p-4">Logging you in...</p>;
 }
