@@ -1,39 +1,52 @@
 "use client";
-
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../../lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 
-export default function AuthCallbackPage() {
+export default function AuthCallback() {
   const router = useRouter();
 
   useEffect(() => {
-    const processLogin = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+    const checkUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      if (user) {
-        // Ensure Owner exists
-        const { data: existing } = await supabase
-          .from("owners")
-          .select("id")
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        if (!existing) {
-          await supabase.from("owners").insert({
-            user_id: user.id,
-            email: user.email,
-          });
-        }
-
-        router.replace("/dashboard/owner"); // ✅ Redirect owner
-      } else {
+      if (!user) {
         router.replace("/owner/login");
+        return;
       }
+
+      // Check if user is Owner
+      const { data: owner } = await supabase
+        .from("owners")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (owner) {
+        router.replace("/owner/dashboard");
+        return;
+      }
+
+      // Else check if Customer
+      const { data: customer } = await supabase
+        .from("customers")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (customer) {
+        router.replace("/customer/dashboard");
+        return;
+      }
+
+      // If neither → send to login
+      router.replace("/owner/login");
     };
 
-    processLogin();
+    checkUser();
   }, [router]);
 
-  return <p>Loading...</p>;
+  return <p className="p-4">Redirecting...</p>;
 }
