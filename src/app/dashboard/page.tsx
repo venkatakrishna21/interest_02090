@@ -1,22 +1,24 @@
 "use client";
-
-
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import OwnerDashboard from "@/components/OwnerDashboard";
+import CustomerDashboard from "@/components/CustomerDashboard";
 
-export default function DashboardRedirect() {
-  const router = useRouter();
+export default function DashboardPage() {
+  const [role, setRole] = useState<"owner" | "customer" | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const checkRole = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) {
-        router.replace("/login"); // send to login if not authenticated
+        setLoading(false);
         return;
       }
 
-      // ✅ Check if Owner
+      // Check if user is an owner
       const { data: owner } = await supabase
         .from("owners")
         .select("id")
@@ -24,11 +26,12 @@ export default function DashboardRedirect() {
         .maybeSingle();
 
       if (owner) {
-        router.replace("/owner/dashboard");
+        setRole("owner");
+        setLoading(false);
         return;
       }
 
-      // ✅ Check if Customer
+      // Check if user is a customer
       const { data: customer } = await supabase
         .from("customers")
         .select("id")
@@ -36,16 +39,20 @@ export default function DashboardRedirect() {
         .maybeSingle();
 
       if (customer) {
-        router.replace("/customer/dashboard");
+        setRole("customer");
+        setLoading(false);
         return;
       }
 
-      // ❌ No role
-      router.replace("/no-role");
+      setLoading(false);
     };
 
     checkRole();
-  }, [router]);
+  }, []);
 
-  return <p className="p-4">Checking role...</p>;
+  if (loading) return <p className="p-4">Loading...</p>;
+  if (role === "owner") return <OwnerDashboard />;
+  if (role === "customer") return <CustomerDashboard />;
+
+  return <p className="p-4 text-red-500">⚠️ No role assigned to this user</p>;
 }
