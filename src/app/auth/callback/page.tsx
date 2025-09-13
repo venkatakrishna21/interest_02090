@@ -4,19 +4,22 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-export default function AuthCallbackPage() {
+export default function AuthCallback() {
   const router = useRouter();
 
   useEffect(() => {
-    const checkUser = async () => {
-      const { data: { user }, error } = await supabase.auth.getUser();
+    const handleAuth = async () => {
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
 
       if (error || !user) {
         router.replace("/login");
         return;
       }
 
-      // 👇 role comes from user metadata
+      // ✅ Check role from metadata
       const role = user.user_metadata?.role;
 
       if (role === "owner") {
@@ -24,11 +27,12 @@ export default function AuthCallbackPage() {
       } else if (role === "customer") {
         router.replace("/dashboard/customer");
       } else {
+        // fallback if no role set
         router.replace("/login");
       }
     };
 
-    checkUser();
+    handleAuth();
   }, [router]);
 
   return <p className="p-4">Finishing login...</p>;
