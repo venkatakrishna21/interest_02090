@@ -1,7 +1,5 @@
-"use client";
-
 import CustomerDashboard from "@/components/CustomerDashboard";
 
-export default function CustomerDashboardPage() {
+export default function CustomerPage() {
   return <CustomerDashboard />;
 }
