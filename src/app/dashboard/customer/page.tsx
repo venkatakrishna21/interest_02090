@@ -3,92 +3,88 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-export default function CustomerDashboard() {
-  const [customer, setCustomer] = useState<any | null>(null);
-  const [debts, setDebts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+interface Debt {
+  id: string;
+  principal: number;
+  interest_rate: number;
+  created_at: string;
+}
 
-  const fetchCustomerData = async () => {
+export default function CustomerDashboard() {
+  const [debts, setDebts] = useState<Debt[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch debts for logged-in customer
+  const fetchDebts = async () => {
+    setLoading(true);
+
     const {
       data: { user },
-      error: userError,
     } = await supabase.auth.getUser();
+    if (!user) return;
 
-    if (userError || !user) {
-      setError("⚠️ No logged in customer found");
-      setLoading(false);
-      return;
-    }
-
-    // Fetch customer record linked to this logged in user
-    const { data: customerRow, error: customerError } = await supabase
-      .from("customers")
-      .select("id, full_name, email, phone")
-      .eq("user_id", user.id)
-      .single();
-
-    if (customerError || !customerRow) {
-      setError("⚠️ No customer profile found.");
-      setLoading(false);
-      return;
-    }
-
-    setCustomer(customerRow);
-
-    // Fetch debts for this customer
-    const { data: debtRows, error: debtError } = await supabase
+    const { data, error } = await supabase
       .from("debts")
       .select("id, principal, interest_rate, created_at")
-      .eq("customer_id", customerRow.id);
+      .eq("customer_id", user.id)
+      .order("created_at", { ascending: false });
 
-    if (debtError) {
-      setError(debtError.message);
+    if (error) {
+      console.error("Error fetching debts:", error);
     } else {
-      setDebts(debtRows || []);
+      setDebts(data || []);
     }
 
     setLoading(false);
   };
 
+  // Realtime subscription for debt updates
   useEffect(() => {
-    fetchCustomerData();
+    fetchDebts();
+
+    const channel = supabase
+      .channel("debts-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "debts" },
+        () => {
+          fetchDebts(); // refresh whenever debts table changes
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  if (loading) return <p className="p-4">Loading...</p>;
-
   return (
-    <div className="p-6 max-w-xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Customer Dashboard</h1>
+    <div className="p-6 max-w-3xl mx-auto">
+      <h1 className="text-2xl font-bold mb-6">Customer Dashboard</h1>
 
-      {error && <p className="text-red-500 mb-4">{error}</p>}
+      <h2 className="text-lg font-semibold mb-4">My Debts</h2>
 
-      {customer ? (
-        <div className="mb-6 border rounded p-4 bg-gray-50">
-          <p className="font-semibold">{customer.full_name}</p>
-          <p>Email: {customer.email}</p>
-          <p>Phone: {customer.phone}</p>
-        </div>
+      {loading ? (
+        <p>Loading...</p>
+      ) : debts.length === 0 ? (
+        <p>You don’t have any debts yet.</p>
       ) : (
-        <p>No customer record found.</p>
-      )}
-
-      <h2 className="text-lg font-semibold mb-2">My Debts</h2>
-      {debts.length === 0 ? (
-        <p>You have no debts assigned.</p>
-      ) : (
-        <ul className="space-y-3">
+        <ul className="space-y-2">
           {debts.map((d) => (
-            <li key={d.id} className="border rounded p-3 bg-white shadow">
-              <p>
-                <span className="font-semibold">Principal:</span> ₹{d.principal}
-              </p>
-              <p>
-                <span className="font-semibold">Interest Rate:</span>{" "}
-                {d.interest_rate}%
-              </p>
+            <li
+              key={d.id}
+              className="p-3 border rounded-lg flex justify-between"
+            >
+              <div>
+                <p className="font-semibold">
+                  Principal: ₹{d.principal.toLocaleString()}
+                </p>
+                <p className="text-sm text-gray-600">
+                  Interest Rate: {d.interest_rate}%
+                </p>
+              </div>
               <p className="text-sm text-gray-500">
-                Added on {new Date(d.created_at).toLocaleDateString()}
+                {new Date(d.created_at).toLocaleDateString()}
               </p>
             </li>
           ))}
