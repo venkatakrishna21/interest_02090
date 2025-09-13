@@ -1,65 +1,62 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [role, setRole] = useState<"owner" | "customer">("owner");
+  const [message, setMessage] = useState("");
 
   const handleLogin = async () => {
-    setLoading(true);
-    setError(null);
+    setMessage("Sending magic link...");
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithOtp({
       email,
-      password,
+      options: {
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+        data: { role }, // ✅ Save role metadata
+      },
     });
 
-    setLoading(false);
-
     if (error) {
-      setError(error.message);
+      setMessage("❌ " + error.message);
     } else {
-      // ✅ Always redirect to callback
-      router.replace("/auth/callback");
+      setMessage("✅ Check your email for the login link!");
     }
   };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-100">
-      <div className="w-full max-w-md bg-white shadow-lg rounded-lg p-6">
-        <h1 className="text-xl font-bold mb-4 text-center">Login</h1>
-
-        {error && <p className="text-red-500 mb-3">{error}</p>}
+      <div className="w-full max-w-md bg-white p-6 rounded shadow">
+        <h1 className="text-xl font-bold mb-4">Login</h1>
 
         <input
           type="email"
-          placeholder="Email"
+          placeholder="Enter your email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="w-full border rounded p-2 mb-3"
         />
 
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full border rounded p-2 mb-4"
-        />
+        {/* Role Selector */}
+        <select
+          value={role}
+          onChange={(e) => setRole(e.target.value as "owner" | "customer")}
+          className="w-full border rounded p-2 mb-3"
+        >
+          <option value="owner">Login as Owner</option>
+          <option value="customer">Login as Customer</option>
+        </select>
 
         <button
           onClick={handleLogin}
-          disabled={loading}
-          className="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+          className="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600"
         >
-          {loading ? "Logging in..." : "Login"}
+          Send Magic Link
         </button>
+
+        {message && <p className="mt-3 text-center">{message}</p>}
       </div>
     </div>
   );
