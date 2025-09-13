@@ -4,11 +4,12 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-export default function AuthCallback() {
+export default function AuthCallbackPage() {
   const router = useRouter();
 
   useEffect(() => {
-    const handleAuth = async () => {
+    const handleCallback = async () => {
+      // Get the logged-in user
       const {
         data: { user },
         error,
@@ -19,7 +20,7 @@ export default function AuthCallback() {
         return;
       }
 
-      // ✅ Check role from metadata
+      // ✅ Read role from user_metadata
       const role = user.user_metadata?.role;
 
       if (role === "owner") {
@@ -27,13 +28,13 @@ export default function AuthCallback() {
       } else if (role === "customer") {
         router.replace("/dashboard/customer");
       } else {
-        // fallback if no role set
+        // fallback
         router.replace("/login");
       }
     };
 
-    handleAuth();
+    handleCallback();
   }, [router]);
 
-  return <p className="p-4">Finishing login...</p>;
+  return <p className="p-6 text-center">Finishing login...</p>;
 }
