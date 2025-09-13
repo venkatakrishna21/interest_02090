@@ -3,177 +3,191 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
+interface Customer {
+  id: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  created_at: string;
+}
+
 export default function OwnerDashboard() {
-  const [customers, setCustomers] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    full_name: "",
+    email: "",
+    phone: "",
+    debt_principal: "",
+    interest_rate: "",
+  });
 
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [principal, setPrincipal] = useState("");
-  const [interestRate, setInterestRate] = useState("");
-
-  // 🔹 Fetch customers
+  // Fetch all customers for this owner
   const fetchCustomers = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setError("⚠️ Not logged in");
-      setLoading(false);
-      return;
-    }
+    setLoading(true);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
 
     const { data, error } = await supabase
       .from("customers")
-      .select("id, full_name, email, phone, debts(principal, interest_rate)")
-      .eq("owner_id", user.id); // owner_id must match logged-in owner
+      .select("*")
+      .eq("owner_id", user.id)
+      .order("created_at", { ascending: false });
 
     if (error) {
-      setError(error.message);
+      console.error("Error fetching customers:", error);
     } else {
       setCustomers(data || []);
     }
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchCustomers();
-  }, []);
+  // Add new customer
+  const handleAddCustomer = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
 
-  // 🔹 Save customer
-  const saveCustomer = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setError("⚠️ Not logged in");
-      return;
-    }
-
-    const { data: ownerRow } = await supabase
-      .from("owners")
-      .select("id")
-      .eq("user_id", user.id)
-      .single();
-
-    if (!ownerRow) {
-      setError("⚠️ No owner profile found");
-      return;
-    }
-
-    // Insert customer
-    const { data: newCustomer, error: customerError } = await supabase
+    const { data, error } = await supabase
       .from("customers")
       .insert([
         {
-          owner_id: ownerRow.id,
-          full_name: fullName,
-          email,
-          phone,
+          owner_id: user.id,
+          full_name: form.full_name,
+          email: form.email,
+          phone: form.phone,
         },
       ])
       .select()
       .single();
 
-    if (customerError) {
-      setError("❌ " + customerError.message);
-      return;
+    if (error) {
+      console.error("Error adding customer:", error);
+    } else {
+      // also add debt
+      const { error: debtError } = await supabase.from("debts").insert([
+        {
+          customer_id: data.id,
+          owner_id: user.id,
+          principal: Number(form.debt_principal),
+          interest_rate: Number(form.interest_rate),
+        },
+      ]);
+
+      if (debtError) console.error("Error adding debt:", debtError);
     }
 
-    // Insert debt
-    const { error: debtError } = await supabase.from("debts").insert([
-      {
-        owner_id: ownerRow.id,
-        customer_id: newCustomer.id,
-        principal: Number(principal),
-        interest_rate: Number(interestRate),
-      },
-    ]);
-
-    if (debtError) {
-      setError("❌ " + debtError.message);
-      return;
-    }
-
-    // ✅ Refresh immediately without manual refresh
-    fetchCustomers();
-
-    // Reset form
-    setFullName("");
-    setEmail("");
-    setPhone("");
-    setPrincipal("");
-    setInterestRate("");
-    setError(null);
+    setForm({
+      full_name: "",
+      email: "",
+      phone: "",
+      debt_principal: "",
+      interest_rate: "",
+    });
   };
 
-  if (loading) return <p className="p-4">Loading...</p>;
+  // Setup realtime subscription
+  useEffect(() => {
+    fetchCustomers();
+
+    const channel = supabase
+      .channel("customers-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "customers" },
+        () => {
+          fetchCustomers(); // Refresh whenever customers table changes
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Owner Dashboard</h1>
+    <div className="p-6 max-w-3xl mx-auto">
+      <h1 className="text-2xl font-bold mb-6">Owner Dashboard</h1>
 
-      {error && <p className="text-red-500 mb-3">{error}</p>}
+      <div className="bg-white shadow p-4 rounded-lg mb-6">
+        <h2 className="text-lg font-semibold mb-4">Add New Customer</h2>
 
-      <h2 className="text-lg font-semibold mb-2">Add New Customer</h2>
-      <div className="space-y-3 mb-6">
-        <input
-          type="text"
-          placeholder="Full Name"
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-          className="w-full border rounded p-2"
-        />
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full border rounded p-2"
-        />
-        <input
-          type="text"
-          placeholder="Phone"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          className="w-full border rounded p-2"
-        />
-        <input
-          type="number"
-          placeholder="Debt Principal"
-          value={principal}
-          onChange={(e) => setPrincipal(e.target.value)}
-          className="w-full border rounded p-2"
-        />
-        <input
-          type="number"
-          placeholder="Interest Rate (%)"
-          value={interestRate}
-          onChange={(e) => setInterestRate(e.target.value)}
-          className="w-full border rounded p-2"
-        />
+        <div className="grid grid-cols-2 gap-4">
+          <input
+            type="text"
+            placeholder="Full Name"
+            value={form.full_name}
+            onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+            className="border p-2 rounded"
+          />
+          <input
+            type="email"
+            placeholder="Email"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            className="border p-2 rounded"
+          />
+          <input
+            type="text"
+            placeholder="Phone"
+            value={form.phone}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            className="border p-2 rounded"
+          />
+          <input
+            type="number"
+            placeholder="Debt Principal"
+            value={form.debt_principal}
+            onChange={(e) =>
+              setForm({ ...form, debt_principal: e.target.value })
+            }
+            className="border p-2 rounded"
+          />
+          <input
+            type="number"
+            placeholder="Interest Rate (%)"
+            value={form.interest_rate}
+            onChange={(e) =>
+              setForm({ ...form, interest_rate: e.target.value })
+            }
+            className="border p-2 rounded"
+          />
+        </div>
 
         <button
-          onClick={saveCustomer}
-          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+          onClick={handleAddCustomer}
+          className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
         >
           Save Customer
         </button>
       </div>
 
-      <h2 className="text-lg font-semibold mb-2">My Customers</h2>
-      {customers.length === 0 ? (
+      <h2 className="text-lg font-semibold mb-4">My Customers</h2>
+
+      {loading ? (
+        <p>Loading...</p>
+      ) : customers.length === 0 ? (
         <p>No customers yet.</p>
       ) : (
         <ul className="space-y-2">
           {customers.map((c) => (
-            <li key={c.id} className="border rounded p-3 bg-gray-50">
-              <p className="font-semibold">{c.full_name}</p>
-              <p>Email: {c.email}</p>
-              <p>Phone: {c.phone}</p>
-              {c.debts.length > 0 && (
-                <p>
-                  Debt: ₹{c.debts[0].principal} at {c.debts[0].interest_rate}%
-                </p>
-              )}
+            <li
+              key={c.id}
+              className="p-3 border rounded-lg flex justify-between"
+            >
+              <div>
+                <p className="font-semibold">{c.full_name}</p>
+                <p className="text-sm text-gray-600">{c.email}</p>
+                <p className="text-sm text-gray-600">{c.phone}</p>
+              </div>
+              <p className="text-sm text-gray-500">
+                Joined: {new Date(c.created_at).toLocaleDateString()}
+              </p>
             </li>
           ))}
         </ul>
