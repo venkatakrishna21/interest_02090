@@ -16,7 +16,7 @@ export default function AuthCallbackPage() {
         return;
       }
 
-      // 👇 role should be inside user.user_metadata.role
+      // 👇 role comes from user metadata
       const role = user.user_metadata?.role;
 
       if (role === "owner") {
