@@ -4,158 +4,180 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function OwnerDashboard() {
+  const [ownerId, setOwnerId] = useState<string | null>(null);
   const [customers, setCustomers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // form state
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [debtPrincipal, setDebtPrincipal] = useState("");
-  const [interestRate, setInterestRate] = useState("");
+  const [principal, setPrincipal] = useState<number>(0);
+  const [interestRate, setInterestRate] = useState<number>(0);
 
-  // Fetch customers initially
-  const fetchCustomers = async () => {
-    const { data, error } = await supabase
-      .from("customers")
-      .select("id, full_name, email, phone, debts(principal, interest_rate)");
-
-    if (!error && data) setCustomers(data);
-  };
-
+  // fetch owner + customers
   useEffect(() => {
-    fetchCustomers();
+    const fetchData = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    // Subscribe to customers table changes
-    const customerChannel = supabase
-      .channel("customers-changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "customers" },
-        (payload) => {
-          if (payload.eventType === "INSERT") {
-            setCustomers((prev) => [...prev, payload.new]);
-          } else if (payload.eventType === "UPDATE") {
-            setCustomers((prev) =>
-              prev.map((c) => (c.id === payload.new.id ? payload.new : c))
-            );
-          } else if (payload.eventType === "DELETE") {
-            setCustomers((prev) => prev.filter((c) => c.id !== payload.old.id));
-          }
-        }
-      )
-      .subscribe();
+      if (!user) {
+        setError("⚠️ No logged-in user");
+        setLoading(false);
+        return;
+      }
 
-    // Subscribe to debts table changes
-    const debtsChannel = supabase
-      .channel("debts-changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "debts" },
-        () => {
-          fetchCustomers(); // refresh debts when changed
-        }
-      )
-      .subscribe();
+      // find owner row
+      const { data: owner } = await supabase
+        .from("owners")
+        .select("id")
+        .eq("user_id", user.id)
+        .single();
 
-    return () => {
-      supabase.removeChannel(customerChannel);
-      supabase.removeChannel(debtsChannel);
+      if (!owner) {
+        setError("⚠️ No matching owner found.");
+        setLoading(false);
+        return;
+      }
+
+      setOwnerId(owner.id);
+
+      // fetch customers
+      const { data: customersData, error: cError } = await supabase
+        .from("customers")
+        .select("id, full_name, email, phone");
+
+      if (cError) {
+        setError(cError.message);
+      } else {
+        setCustomers(customersData || []);
+      }
+
+      setLoading(false);
     };
+
+    fetchData();
   }, []);
 
-  // Save new customer with debt
+  // add new customer with debt
   const saveCustomer = async () => {
-    if (!fullName || !email || !debtPrincipal) return;
+    if (!ownerId) return;
 
-    // Step 1: Insert customer
-    const { data: customer, error: customerError } = await supabase
+    setError(null);
+
+    const { data: insertedCustomer, error: cError } = await supabase
       .from("customers")
-      .insert([{ full_name: fullName, email, phone }])
-      .select("id")
+      .insert([
+        {
+          owner_id: ownerId,
+          full_name: fullName,
+          email,
+          phone,
+        },
+      ])
+      .select()
       .single();
 
-    if (customerError) {
-      alert("❌ " + customerError.message);
+    if (cError) {
+      setError(cError.message);
       return;
     }
 
-    // Step 2: Insert debt for this customer
-    await supabase.from("debts").insert([
-      {
-        customer_id: customer.id,
-        principal: parseFloat(debtPrincipal),
-        interest_rate: parseFloat(interestRate),
-      },
-    ]);
+    // create debt for this customer
+    if (insertedCustomer) {
+      const { error: dError } = await supabase.from("debts").insert([
+        {
+          owner_id: ownerId,
+          customer_id: insertedCustomer.id,
+          principal,
+          interest_rate: interestRate,
+        },
+      ]);
 
-    // Reset form
-    setFullName("");
-    setEmail("");
-    setPhone("");
-    setDebtPrincipal("");
-    setInterestRate("");
+      if (dError) {
+        setError(dError.message);
+        return;
+      }
+
+      // ✅ instantly update local state (no refresh needed)
+      setCustomers((prev) => [...prev, insertedCustomer]);
+
+      // clear form
+      setFullName("");
+      setEmail("");
+      setPhone("");
+      setPrincipal(0);
+      setInterestRate(0);
+
+      alert("✅ Customer and debt saved!");
+    }
   };
 
-  return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">📌 Owner Dashboard</h1>
+  if (loading) return <p className="p-4">Loading...</p>;
 
-      <div className="space-y-2 mb-6">
+  return (
+    <div className="p-6 max-w-xl mx-auto">
+      <h1 className="text-2xl font-bold mb-4">Owner Dashboard</h1>
+
+      {error && <p className="text-red-500 mb-4">{error}</p>}
+
+      {/* Add Customer Form */}
+      <div className="space-y-3 border p-4 rounded mb-6">
+        <h2 className="text-lg font-semibold">Add New Customer</h2>
         <input
           type="text"
           placeholder="Full Name"
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
-          className="w-full border p-2 rounded"
+          className="w-full border rounded p-2"
         />
         <input
           type="email"
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full border p-2 rounded"
+          className="w-full border rounded p-2"
         />
         <input
           type="text"
           placeholder="Phone"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
-          className="w-full border p-2 rounded"
+          className="w-full border rounded p-2"
         />
         <input
           type="number"
           placeholder="Debt Principal"
-          value={debtPrincipal}
-          onChange={(e) => setDebtPrincipal(e.target.value)}
-          className="w-full border p-2 rounded"
+          value={principal}
+          onChange={(e) => setPrincipal(Number(e.target.value))}
+          className="w-full border rounded p-2"
         />
         <input
           type="number"
           placeholder="Interest Rate (%)"
           value={interestRate}
-          onChange={(e) => setInterestRate(e.target.value)}
-          className="w-full border p-2 rounded"
+          onChange={(e) => setInterestRate(Number(e.target.value))}
+          className="w-full border rounded p-2"
         />
 
         <button
           onClick={saveCustomer}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
         >
           Save Customer
         </button>
       </div>
 
-      <h2 className="text-xl font-semibold mb-2">📋 My Customers</h2>
+      {/* My Customers */}
+      <h2 className="text-xl font-semibold mb-2">My Customers</h2>
       <ul className="space-y-2">
         {customers.map((c) => (
-          <li key={c.id} className="border p-2 rounded bg-gray-50">
-            <p>
-              <b>{c.full_name}</b> ({c.email})
-            </p>
-            <p>📞 {c.phone}</p>
-            {c.debts?.map((d: any, i: number) => (
-              <p key={i}>
-                💰 {d.principal} @ {d.interest_rate}%
-              </p>
-            ))}
+          <li key={c.id} className="border rounded p-3">
+            <p className="font-medium">{c.full_name}</p>
+            <p className="text-sm text-gray-600">{c.email}</p>
+            <p className="text-sm text-gray-600">{c.phone}</p>
           </li>
         ))}
       </ul>
