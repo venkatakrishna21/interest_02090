@@ -4,59 +4,32 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-export default function AuthCallback() {
+export default function AuthCallbackPage() {
   const router = useRouter();
 
   useEffect(() => {
-    const handleRedirect = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    const checkUser = async () => {
+      const { data: { user }, error } = await supabase.auth.getUser();
 
-      if (!user) {
+      if (error || !user) {
         router.replace("/login");
         return;
       }
 
-      // fetch role from public.users metadata or your "owners/customers" tables
-      const role =
-        (user.user_metadata?.role as string | undefined) ||
-        (await getRoleFromDb(user.id));
+      // 👇 role should be inside user.user_metadata.role
+      const role = user.user_metadata?.role;
 
       if (role === "owner") {
-        router.replace("/dashboard/owner" as const);
+        router.replace("/dashboard/owner");
       } else if (role === "customer") {
-        router.replace("/dashboard/customer" as const);
+        router.replace("/dashboard/customer");
       } else {
         router.replace("/login");
       }
     };
 
-    handleRedirect();
+    checkUser();
   }, [router]);
 
-  return <p className="p-6 text-lg">Finishing login...</p>;
-}
-
-// Utility to fetch role if not in metadata
-async function getRoleFromDb(userId: string): Promise<string | undefined> {
-  // Check in owners table
-  const { data: owner } = await supabase
-    .from("owners")
-    .select("id")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (owner) return "owner";
-
-  // Check in customers table
-  const { data: customer } = await supabase
-    .from("customers")
-    .select("id")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (customer) return "customer";
-
-  return undefined;
+  return <p className="p-4">Finishing login...</p>;
 }
