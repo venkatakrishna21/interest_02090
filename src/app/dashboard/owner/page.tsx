@@ -1,7 +1,5 @@
-"use client";
-
 import OwnerDashboard from "@/components/OwnerDashboard";
 
-export default function OwnerDashboardPage() {
+export default function OwnerPage() {
   return <OwnerDashboard />;
 }
