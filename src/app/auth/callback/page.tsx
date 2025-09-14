@@ -4,42 +4,50 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-export default function AuthCallback() {
+export default function AuthCallbackPage() {
   const router = useRouter();
 
   useEffect(() => {
-    const handleAuth = async () => {
-      // ✅ Exchange the session from the URL fragment
-      const { data, error } = await supabase.auth.getSession();
+    const handleCallback = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      if (error || !data.session) {
+      if (!user) {
         router.replace("/login");
         return;
       }
 
-      const user = data.session.user;
-      const role = user.user_metadata?.role;
+      // Check if user is owner
+      const { data: owner } = await supabase
+        .from("owners")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-      if (role === "owner") {
-        await supabase.from("owners").upsert({
-          user_id: user.id,
-          email: user.email,
-        });
+      if (owner) {
         router.replace("/dashboard/owner");
-      } else if (role === "customer") {
-        await supabase.from("customers").upsert({
-          user_id: user.id,
-          email: user.email,
-          name: user.email?.split("@")[0] ?? "Customer",
-        });
-        router.replace("/dashboard/customer");
-      } else {
-        router.replace("/login");
+        return;
       }
+
+      // Else check if user is customer
+      const { data: customer } = await supabase
+        .from("customers")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (customer) {
+        router.replace("/dashboard/customer");
+        return;
+      }
+
+      // default fallback
+      router.replace("/login");
     };
 
-    handleAuth();
+    handleCallback();
   }, [router]);
 
-  return <p className="p-4">Finishing login...</p>;
+  return <p className="p-6">Finishing login...</p>;
 }
