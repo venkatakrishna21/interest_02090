@@ -1,101 +1,75 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [role, setRole] = useState<"owner" | "customer">("owner");
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
     setLoading(true);
+    setMessage("");
 
-    // Authenticate user
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      // ✅ Ensure role metadata is saved with magic link
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          data: { role }, // 👈 This ensures role is saved on user_metadata
+        },
+      });
 
-    if (error) {
-      setError("❌ " + error.message);
+      if (error) {
+        setMessage(`❌ Error: ${error.message}`);
+      } else {
+        setMessage("✅ Check your email for the magic link!");
+      }
+    } catch (err: any) {
+      setMessage(`❌ Unexpected error: ${err.message}`);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const user = data.user;
-    if (!user) {
-      setError("⚠️ No user returned after login");
-      setLoading(false);
-      return;
-    }
-
-    // Check if user is an Owner
-    const { data: owner } = await supabase
-      .from("owners")
-      .select("id")
-      .eq("user_id", user.id)
-      .single();
-
-    if (owner) {
-      router.push("/owner");
-      return;
-    }
-
-    // Check if user is a Customer
-    const { data: customer } = await supabase
-      .from("customers")
-      .select("id")
-      .eq("user_id", user.id)
-      .single();
-
-    if (customer) {
-      router.push("/customer");
-      return;
-    }
-
-    // If neither role found
-    setError("⚠️ User is not assigned as Owner or Customer.");
-    setLoading(false);
   };
 
   return (
-    <div className="flex justify-center items-center h-screen bg-gray-100">
-      <div className="w-full max-w-md bg-white p-6 rounded shadow">
-        <h1 className="text-2xl font-bold mb-4 text-center">Login</h1>
-
-        {error && <p className="text-red-500 mb-3">{error}</p>}
+    <div className="flex min-h-screen items-center justify-center bg-gray-100">
+      <div className="w-full max-w-md rounded-xl bg-white p-8 shadow">
+        <h1 className="mb-6 text-center text-2xl font-bold">Login</h1>
 
         <form onSubmit={handleLogin} className="space-y-4">
           <input
             type="email"
-            placeholder="Email"
+            placeholder="Enter your email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full border p-2 rounded"
             required
+            className="w-full rounded-lg border px-3 py-2"
           />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full border p-2 rounded"
-            required
-          />
+
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as "owner" | "customer")}
+            className="w-full rounded-lg border px-3 py-2"
+          >
+            <option value="owner">Login as Owner</option>
+            <option value="customer">Login as Customer</option>
+          </select>
+
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600"
+            className="w-full rounded-lg bg-blue-600 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? "Logging in..." : "Login"}
+            {loading ? "Sending..." : "Send Magic Link"}
           </button>
         </form>
+
+        {message && <p className="mt-4 text-center">{message}</p>}
       </div>
     </div>
   );
