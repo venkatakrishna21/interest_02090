@@ -9,19 +9,17 @@ export default function AuthCallback() {
 
   useEffect(() => {
     const handleAuth = async () => {
-      const {
-        data: { user },
-        error,
-      } = await supabase.auth.getUser();
+      // ✅ Exchange the session from the URL fragment
+      const { data, error } = await supabase.auth.getSession();
 
-      if (error || !user) {
+      if (error || !data.session) {
         router.replace("/login");
         return;
       }
 
+      const user = data.session.user;
       const role = user.user_metadata?.role;
 
-      // Auto-create DB rows if missing
       if (role === "owner") {
         await supabase.from("owners").upsert({
           user_id: user.id,
