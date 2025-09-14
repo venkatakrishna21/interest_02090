@@ -1,53 +1,38 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-export default function AuthCallbackPage() {
+export default function AuthCallback() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     const handleCallback = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const role = searchParams.get("role");
 
-      if (!user) {
+      // Wait for Supabase session to finalize
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
         router.replace("/login");
         return;
       }
 
-      // Check if user is owner
-      const { data: owner } = await supabase
-        .from("owners")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (owner) {
+      if (role === "owner") {
         router.replace("/dashboard/owner");
-        return;
-      }
-
-      // Else check if user is customer
-      const { data: customer } = await supabase
-        .from("customers")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (customer) {
+      } else if (role === "customer") {
         router.replace("/dashboard/customer");
-        return;
+      } else {
+        router.replace("/login");
       }
-
-      // default fallback
-      router.replace("/login");
     };
 
     handleCallback();
-  }, [router]);
+  }, [router, searchParams]);
 
   return <p className="p-6">Finishing login...</p>;
 }
