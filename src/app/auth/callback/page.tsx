@@ -4,12 +4,11 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-export default function AuthCallbackPage() {
+export default function AuthCallback() {
   const router = useRouter();
 
   useEffect(() => {
-    const handleCallback = async () => {
-      // Get the logged-in user
+    const handleAuth = async () => {
       const {
         data: { user },
         error,
@@ -20,21 +19,29 @@ export default function AuthCallbackPage() {
         return;
       }
 
-      // ✅ Read role from user_metadata
       const role = user.user_metadata?.role;
 
+      // Auto-create DB rows if missing
       if (role === "owner") {
+        await supabase.from("owners").upsert({
+          user_id: user.id,
+          email: user.email,
+        });
         router.replace("/dashboard/owner");
       } else if (role === "customer") {
+        await supabase.from("customers").upsert({
+          user_id: user.id,
+          email: user.email,
+          name: user.email?.split("@")[0] ?? "Customer",
+        });
         router.replace("/dashboard/customer");
       } else {
-        // fallback
         router.replace("/login");
       }
     };
 
-    handleCallback();
+    handleAuth();
   }, [router]);
 
-  return <p className="p-6 text-center">Finishing login...</p>;
+  return <p className="p-4">Finishing login...</p>;
 }
