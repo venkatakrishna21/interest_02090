@@ -2,58 +2,48 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
 export default function CustomerDashboard() {
   const [debts, setDebts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
+    const checkSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) router.replace("/login");
+    };
+
     const fetchDebts = async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+      if (!user) return;
 
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
-      // Fetch debts only for logged-in customer
       const { data, error } = await supabase
         .from("debts")
-        .select("id, amount, interest_rate, status, due_date")
+        .select("id, amount, interest_rate, status")
         .eq("customer_id", user.id);
 
-      if (!error && data) {
-        setDebts(data);
-      }
-
-      setLoading(false);
+      if (!error) setDebts(data || []);
     };
 
+    checkSession();
     fetchDebts();
-  }, []);
-
-  if (loading) return <p className="p-4">Loading...</p>;
+  }, [router]);
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="p-6">
       <h1 className="text-2xl font-bold mb-4">💳 My Debts</h1>
-
       {debts.length === 0 ? (
-        <p>You have no debts assigned yet.</p>
+        <p>You have no debts yet.</p>
       ) : (
         <ul className="space-y-3">
           {debts.map((d) => (
-            <li
-              key={d.id}
-              className="p-4 border rounded shadow-sm bg-white"
-            >
-              <p>
-                💰 <strong>{d.amount}</strong> @ {d.interest_rate}%
-              </p>
-              <p>Status: {d.status}</p>
-              <p>Due: {d.due_date ?? "N/A"}</p>
+            <li key={d.id} className="p-4 border rounded bg-white">
+              💰 {d.amount} @ {d.interest_rate}%
             </li>
           ))}
         </ul>
