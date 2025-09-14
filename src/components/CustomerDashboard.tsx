@@ -3,85 +3,62 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
+interface Debt {
+  id: string;
+  principal: number;
+  interest_rate: number;
+  created_at: string;
+}
+
 export default function CustomerDashboard() {
-  const [customer, setCustomer] = useState<any | null>(null);
-  const [debts, setDebts] = useState<any[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchDebts = async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+      if (!user) return;
 
-      if (!user) {
-        setError("⚠️ No logged-in user");
-        setLoading(false);
-        return;
-      }
-
-      // fetch this customer row
-      const { data: customerData } = await supabase
+      const { data: cust } = await supabase
         .from("customers")
-        .select("id, full_name, email, phone")
+        .select("id")
         .eq("user_id", user.id)
         .single();
 
-      if (!customerData) {
-        setError("⚠️ No matching customer found.");
-        setLoading(false);
-        return;
-      }
+      if (!cust) return;
 
-      setCustomer(customerData);
-
-      // fetch debts for this customer
-      const { data: debtData, error: dError } = await supabase
+      const { data: debtsData } = await supabase
         .from("debts")
         .select("id, principal, interest_rate, created_at")
-        .eq("customer_id", customerData.id);
+        .eq("customer_id", cust.id);
 
-      if (dError) {
-        setError(dError.message);
-      } else {
-        setDebts(debtData || []);
-      }
-
+      setDebts(debtsData || []);
       setLoading(false);
     };
-
-    fetchData();
+    fetchDebts();
   }, []);
 
-  if (loading) return <p className="p-4">Loading...</p>;
+  if (loading) return <p className="p-6">Loading...</p>;
 
   return (
     <div className="p-6 max-w-xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">My Debt Details</h1>
-
-      {error && <p className="text-red-500 mb-4">{error}</p>}
-
-      {customer && (
-        <div className="border rounded p-4 mb-6">
-          <p className="font-semibold">{customer.full_name}</p>
-          <p className="text-sm">{customer.email}</p>
-          <p className="text-sm">{customer.phone}</p>
-        </div>
+      <h1 className="text-2xl font-bold mb-6">💰 My Debts</h1>
+      {debts.length === 0 ? (
+        <p>No debts yet.</p>
+      ) : (
+        <ul className="space-y-2">
+          {debts.map((d) => (
+            <li key={d.id} className="border p-3 rounded">
+              ₹{d.principal} at {d.interest_rate}% <br />
+              <span className="text-sm text-gray-600">
+                {new Date(d.created_at).toLocaleDateString()}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
-
-      <h2 className="text-xl font-semibold mb-2">Debts</h2>
-      <ul className="space-y-2">
-        {debts.map((d) => (
-          <li key={d.id} className="border rounded p-3">
-            <p>Principal: ₹{d.principal}</p>
-            <p>Interest Rate: {d.interest_rate}%</p>
-            <p className="text-sm text-gray-600">
-              Added: {new Date(d.created_at).toLocaleDateString()}
-            </p>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
